@@ -1,0 +1,16 @@
+{
+  "compilerOptions": {
+    "target": "ES2017",
+    "module": "none",
+    "strict": true,
+    "outDir": "google-app",
+    "rootDir": "src",
+    "esModuleInterop": false,
+    "skipLibCheck": true,
+    "noImplicitThis": false,
+    "lib": ["ES2017", "DOM"],
+    "types": ["google-apps-script"]
+  },
+  "include": ["src/**/*.ts", "src/**/*.d.ts"],
+  "exclude": ["src/**/*.module.ts", "tests"]
+}

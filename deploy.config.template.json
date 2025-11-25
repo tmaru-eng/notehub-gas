@@ -1,0 +1,13 @@
+{
+  "__comment": "Copy to deploy.config.json and fill values. Slack channelIds supports comma-separated list (e.g. \"C01AAA,C01BBB\").",
+  "spreadsheetId": "PUT_YOUR_SPREADSHEET_ID_HERE",
+  "scriptId": "PUT_YOUR_SCRIPT_ID_HERE",
+  "rootDir": "google-app",
+  "articlesSheetName": "Articles",
+  "slackSheetName": "SlackMessages",
+  "driveImagesFolder": "notehub-images",
+  "slackBotToken": "PUT_YOUR_SLACK_BOT_TOKEN_HERE",
+  "slackChannelIds": "PUT_COMMA_SEPARATED_CHANNEL_IDS_HERE",
+  "slackNotificationChannelIds": "PUT_COMMA_SEPARATED_NOTIFY_CHANNEL_IDS_HERE",
+  "webAppUrl": ""
+}

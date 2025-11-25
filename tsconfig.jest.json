@@ -1,0 +1,11 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "module": "commonjs",
+    "esModuleInterop": true,
+    "types": ["jest", "google-apps-script"],
+    "rootDir": ".",
+    "outDir": "tmp-jest"
+  },
+  "include": ["src/**/*.ts", "tests/**/*.ts"]
+}

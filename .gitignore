@@ -1,0 +1,12 @@
+# Local config / secrets
+.clasp.json
+deploy.config.json
+google-app/config.generated.js
+
+# OS / tooling
+.DS_Store
+.gemini/
+tmp-jest/
+
+# Dependencies
+node_modules

@@ -1,0 +1,1356 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <base target="_top">
+    <?!= include('styles'); ?>
+    <!-- marked.js CDN を追加 -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <!-- mermaid.js -->
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+  </head>
+  <body>
+    <div class="container">
+      
+      <!-- ★★★ ボタンエリアを追加 ★★★ -->
+      <div class="main-actions">
+          <button type="button" id="showFormButton" onclick="showForm()">新規投稿</button>
+          <button type="button" id="showSearchButton" onclick="showSearch()">記事検索</button>
+          <button type="button" id="showListButton" onclick="showList()" style="display: none;">一覧に戻る</button> <!-- 初期非表示 -->
+      </div>
+      <hr>
+
+      <!-- 投稿フォームエリア (初期非表示) -->
+      <div id="formContainer" style="display: none;">
+        <h1 id="formTitle">記事投稿フォーム</h1>
+        <form id="articleForm">
+          <input type="hidden" id="editArticleId">
+          <div class="form-group">
+            <label for="title">タイトル:</label>
+            <input type="text" id="title" name="title" required>
+          </div>
+          <div class="form-group">
+            <label for="content">内容:</label>
+            <div class="form-preview-tabs">
+              <button type="button" id="editTabButton" class="tab-button active" onclick="showEditor()">編集</button>
+              <button type="button" id="previewTabButton" class="tab-button" onclick="showPreview()">プレビュー</button>
+            </div>
+            <textarea id="content" name="content" rows="10" required></textarea>
+            <div id="formPreview" class="article-content form-preview-area" style="display: none;"></div>
+          </div>
+          <div class="form-group">
+            <button type="button" id="uploadImageButton" onclick="triggerFileInput()">画像をアップロード</button>
+            <input type="file" id="imageUploadInput" style="display: none;" accept="image/*">
+            <div id="uploadStatus" style="margin-top: 5px; font-size: 0.9em; color: #666;"></div>
+          </div>
+          <div class="form-group">
+            <label for="tagInput">タグ:</label>
+            <div id="tagContainer" class="tag-input-container">
+              <input type="text" id="tagInput" placeholder="タグを入力してEnter (またはスペース/カンマ)">
+            </div>
+            <input type="hidden" id="tags" name="tags">
+          </div>
+          <div class="form-actions">
+          <button type="submit" id="submitButton">投稿する</button>
+            <button type="button" id="cancelEditButton" style="display: none;" onclick="cancelEdit()">キャンセル</button>
+          </div>
+        </form>
+        <div id="status"></div>
+        <hr>
+      </div>
+
+      <!-- 検索エリア (初期非表示) -->
+      <div id="searchContainer" style="display: none;">
+        <h2>記事検索</h2>
+        <div class="form-group">
+          <input type="text" id="searchInput" placeholder="キーワードを入力して検索...">
+        </div>
+        <div id="selectedTagsDisplay"></div>
+        <div id="searchStatus"></div>
+        <hr>
+      </div>
+
+      <!-- 記事一覧エリア (初期表示) -->
+      <div id="articlesListContainer">
+        <h1>
+          記事一覧
+          <!-- ★★★ 新設: レイアウト切り替えボタン ★★★ -->
+          <button type="button" id="layoutToggleButton">グリッド表示へ</button>
+        </h1>
+        <div id="articlesList">
+          <p>読み込み中...</p>
+        </div>
+        <hr>
+      </div>
+
+      <!-- ★★★ 記事詳細モーダル ★★★ -->
+      <div id="detailModal" class="modal" style="display: none;" onclick="closeDetailModal()">
+        <div class="modal-content" onclick="event.stopPropagation()"> 
+          <span class="modal-close-btn" onclick="closeDetailModal()">&times;</span>
+          <h2 id="modalTitle"></h2>
+          <div id="modalMeta" class="article-meta"></div>
+          <div id="modalTags" class="article-tags"></div>
+          <div id="modalActions" style="margin: 8px 0 12px; display: none;">
+            <button type="button" id="modalShareButton">この記事のURLをコピー</button>
+            <span id="modalShareStatus" style="margin-left: 8px; font-size: 0.9em; color: #666;"></span>
+          </div>
+          <hr>
+          <div id="modalContent" class="article-content modal-article-content">
+            <!-- ★★★ 追加: ローディングインジケータ ★★★ -->
+            <div id="modalContentLoading" style="display: none; text-align: center; padding: 20px;">
+              <div class="loading-spinner"></div>
+              <p>コンテンツを読み込み中...</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ★★★ 新設: Slackメッセージ詳細モーダル ★★★ -->
+      <div id="slackDetailModal" class="modal" style="display: none;" onclick="closeSlackDetailModal()">
+        <div class="modal-content slack-modal-content" onclick="event.stopPropagation()"> <!-- Slack用クラス追加 -->
+          <span class="modal-close-btn" onclick="closeSlackDetailModal()">&times;</span>
+          <!-- Slack投稿者情報（アバターと名前） -->
+          <div id="slackModalAuthor" class="slack-modal-author" style="display: flex; align-items: center; gap: 8px; margin-bottom: 10px;">
+             <!-- JSでアバター(img)と名前(span)がここに追加されます -->
+          </div>
+          <!-- Slackメタ情報（チャンネル名と日時） -->
+          <div id="slackModalMeta" class="article-meta" style="margin-bottom: 15px;">
+             <!-- JSでチャンネル名(span)と日時(span)がここに追加されます -->
+          </div>
+          <hr style="margin-bottom: 15px;">
+          <!-- Slackメッセージ内容 -->
+          <div id="slackModalContent" class="article-content modal-article-content slack-content" style="max-height: 60vh; overflow-y: auto;">
+             <!-- JSでメッセージ内容がここに追加されます -->
+          </div>
+          <!-- Slackへのリンクボタン -->
+          <div class="modal-footer" style="margin-top: 15px; text-align: right;">
+              <a id="slackModalLink" href="#" target="_blank" rel="noopener noreferrer" class="slack-link-button" style="display: none; padding: 5px 10px; background-color: #4A154B; color: white; text-decoration: none; border-radius: 4px;">Slackで開く</a>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <? var cfg = getConfig(PropertiesService.getScriptProperties()); ?>
+    <script>
+    const WEBAPP_BASE_URL = '<?= (cfg.webAppUrl || ScriptApp.getService().getUrl()).replace(/\/$/, '') ?>';
+    (function() {
+      if (window.__NOTEHUB_LOADED) {
+        console.warn('NoteHub script already loaded, skipping re-init to avoid duplicate declarations.');
+        return;
+      }
+      window.__NOTEHUB_LOADED = true;
+      // --- ★★★ 修正点: 要素取得をスクリプトの最初に移動 ★★★ ---
+      const formContainer = document.getElementById('formContainer');
+      const searchContainer = document.getElementById('searchContainer');
+      const articlesListContainer = document.getElementById('articlesListContainer');
+      const showFormButton = document.getElementById('showFormButton');
+      const showSearchButton = document.getElementById('showSearchButton');
+      const showListButton = document.getElementById('showListButton');
+      const articleForm = document.getElementById('articleForm');
+      const submitButton = document.getElementById('submitButton');
+      const statusDiv = document.getElementById('status');
+      const articlesListDiv = document.getElementById('articlesList');
+      const titleInput = document.getElementById('title');
+      const contentTextArea = document.getElementById('content');
+      const tagsHiddenInput = document.getElementById('tags');
+      const tagContainer = document.getElementById('tagContainer');
+      const tagInput = document.getElementById('tagInput');
+      const searchInput = document.getElementById('searchInput');
+      const searchStatusDiv = document.getElementById('searchStatus');
+      const selectedTagsDiv = document.getElementById('selectedTagsDisplay'); // ★★★ 修正点: createElementをやめ、getElementByIdに変更 ★★★
+      const editArticleIdInput = document.getElementById('editArticleId');
+      const formTitle = document.getElementById('formTitle');
+      const cancelEditButton = document.getElementById('cancelEditButton');
+      const detailModal = document.getElementById('detailModal');
+      const modalTitle = document.getElementById('modalTitle');
+      const modalMeta = document.getElementById('modalMeta');
+      const modalTags = document.getElementById('modalTags');
+      const modalContent = document.getElementById('modalContent');
+      const modalActions = document.getElementById('modalActions');
+      const modalShareButton = document.getElementById('modalShareButton');
+      const modalShareStatus = document.getElementById('modalShareStatus');
+      const formPreviewDiv = document.getElementById('formPreview');
+      const editTabButton = document.getElementById('editTabButton');
+      const previewTabButton = document.getElementById('previewTabButton');
+      const layoutToggleButton = document.getElementById('layoutToggleButton'); // ★★★ 追加 ★★★
+      const slackModalAuthor = document.getElementById('slackModalAuthor');
+      const slackModalMeta = document.getElementById('slackModalMeta');
+      const slackModalContent = document.getElementById('slackModalContent');
+      const slackModalLink = document.getElementById('slackModalLink');
+      const uploadImageButton = document.getElementById('uploadImageButton');
+      const imageUploadInput = document.getElementById('imageUploadInput');
+      const uploadStatusDiv = document.getElementById('uploadStatus');
+
+      // --- グローバル変数 ---
+      let currentUserEmail = null;
+      let selectedTags = [];
+      let currentFormTags = [];
+      let selectedAuthor = null; // ★★★ 追加: 選択中の著者(email or name)
+      let allContent = []; // ★★★ 追加: 全コンテンツデータ保持用
+      let searchTimeout;
+      let pendingArticleId = null; // URLから開く記事ID
+      // ★★★ 追加: Slack詳細モーダル用要素 ★★★
+      const slackDetailModal = document.getElementById('slackDetailModal'); // 事前にHTMLに追加する必要あり
+
+      // --- ★★★ 表示切り替え関数 ★★★ ---
+      function showForm() {
+          console.log("--- showForm() called ---"); // ★ デバッグログ追加
+          // ★★★ フォームの初期化処理を追加 ★★★
+          formTitle.textContent = '記事投稿フォーム';
+          editArticleIdInput.value = ''; // 編集IDをクリア
+          articleForm.reset(); // フォームの入力値をリセット (title, content など)
+          currentFormTags = []; // フォーム内のタグをクリア
+          renderFormTags(); // タグ表示を更新
+          submitButton.textContent = '投稿する'; // ボタンテキストを戻す
+          submitButton.disabled = false; // 送信ボタンを有効化
+          cancelEditButton.style.display = 'none'; // キャンセルボタンを隠す
+          statusDiv.textContent = ''; // ステータスメッセージをクリア
+          showEditor(); // エディタタブをデフォルト表示にする
+
+          // ★★★ 表示切り替え ★★★
+          formContainer.style.display = 'block';
+          searchContainer.style.display = 'none';
+          articlesListContainer.style.display = 'none';
+          showFormButton.style.display = 'none';
+          showSearchButton.style.display = 'none';
+          showListButton.style.display = 'inline-block';
+      }
+
+      function showSearch() {
+          console.log("--- showSearch() called ---"); // ★ デバッグログ追加
+          formContainer.style.display = 'none';
+          searchContainer.style.display = 'block';
+          articlesListContainer.style.display = 'block'; // 検索結果は一覧に表示
+          showFormButton.style.display = 'none'; // 新規投稿ボタンを隠す
+          showSearchButton.style.display = 'none'; // 自分自身を隠す
+          showListButton.style.display = 'inline-block'; // 一覧へ戻るボタン表示
+          // 必要なら検索欄にフォーカス
+          searchInput.focus(); 
+      }
+
+      function showList() {
+          console.log("--- showList() called ---"); // ★ デバッグログ追加
+          formContainer.style.display = 'none';
+          searchContainer.style.display = 'none';
+          articlesListContainer.style.display = 'block';
+          showFormButton.style.display = 'inline-block';
+          showSearchButton.style.display = 'inline-block';
+          showListButton.style.display = 'none';
+          // 検索状態などをリセット
+          searchInput.value = '';
+          searchStatusDiv.textContent = '';
+          selectedTags = [];
+          updateSelectedTagsDisplay();
+          loadInitialContent(); // 全記事再読み込み
+      }
+      
+      // --- ★★★ 新設: レイアウト切り替え処理 ★★★ ---
+      layoutToggleButton.addEventListener('click', function() {
+        articlesListDiv.classList.toggle('grid-layout');
+        // ボタンのテキストを切り替え
+        if (articlesListDiv.classList.contains('grid-layout')) {
+          layoutToggleButton.textContent = 'リスト表示へ';
+        } else {
+          layoutToggleButton.textContent = 'グリッド表示へ';
+        }
+      });
+
+      // --- 記事読み込み＆表示関数 (displayContent にリネーム) --- ★★★ 修正 ★★★
+      function displayContent(contentItems) { // 関数名と引数名を変更
+            articlesListDiv.innerHTML = '';
+        if (!currentUserEmail) return; // ユーザー情報がない場合は描画しない
+
+        if (contentItems && contentItems.length > 0) {
+          contentItems.forEach(function(item) {
+            const itemDiv = document.createElement('div');
+            itemDiv.className = 'article'; // CSSクラスは流用、必要なら変更
+            itemDiv.setAttribute('data-item-id', item.id); // 属性名を変更
+            itemDiv.setAttribute('data-type', item.type); // タイプ属性を追加
+
+            // --- タイプに応じた表示切り替え --- ★★★ 追加 ★★★
+            if (item.type === 'article') {
+              itemDiv.setAttribute('data-author-email', item.author.email);
+              itemDiv.onclick = function() { showArticleDetail(item.id); };
+                
+              const title = document.createElement('h2');
+              title.textContent = item.title || '(タイトルなし)';
+              itemDiv.appendChild(title); // ★★★ まずタイトルを追加
+
+              // ★★★ 修正: タグをタイトルの直下に追加 ★★★
+              const tagsDiv = document.createElement('div');
+              tagsDiv.className = 'article-tags';
+              if (item.tags && item.tags.length > 0) {
+                  item.tags.forEach(tag => {
+                      const tagSpan = document.createElement('span');
+                      tagSpan.className = 'tag';
+                      if (selectedTags.includes(tag)) { tagSpan.classList.add('selected'); }
+                      tagSpan.textContent = tag;
+                      tagSpan.onclick = function(e) { e.stopPropagation(); handleTagClick(tag); };
+                      tagsDiv.appendChild(tagSpan);
+                  });
+              }
+              itemDiv.appendChild(tagsDiv); // ★★★ タイトルの後に追加
+
+              const contentDiv = document.createElement('div');
+              contentDiv.className = 'article-content';
+              const previewContent = (item.content || '').substring(0, 150) + '...';
+              contentDiv.innerHTML = marked.parse(previewContent);
+              itemDiv.appendChild(contentDiv); // ★★★ タグの後に追加
+
+              const linksInPreview = contentDiv.querySelectorAll('a');
+              linksInPreview.forEach(link => {
+                link.target = '_blank';
+                link.rel = 'noopener noreferrer';
+              });
+
+              // ★★★ 修正: メタ情報 (左寄せ要素と右寄せ要素に分割) ★★★
+              const metaDiv = document.createElement('div');
+              metaDiv.className = 'article-meta';
+              metaDiv.style.display = 'flex';
+              metaDiv.style.width = '100%';
+              metaDiv.style.alignItems = 'center';
+              metaDiv.style.justifyContent = 'space-between'; // 左寄せと右寄せを実現
+
+              // 左寄せ部分 (アバター + 名前)
+              const authorInfoDiv = document.createElement('div');
+              authorInfoDiv.style.display = 'flex';
+              authorInfoDiv.style.alignItems = 'center';
+              authorInfoDiv.style.gap = '4px'; // アバターと名前の間の隙間
+
+              // アバター (仮: 記事には現状アバターがないため、Slack同様のものを表示するなら別途対応)
+              // const avatarImg = document.createElement('img'); ...
+              // authorInfoDiv.appendChild(avatarImg);
+
+              const authorSpan = document.createElement('span');
+              authorSpan.className = 'author-name-class'; // 必要ならクラス適用
+              authorSpan.textContent = `投稿者: ${item.author.name || item.author.email || '不明'}`;
+              authorSpan.style.cursor = 'pointer';
+              authorSpan.style.textDecoration = 'underline';
+              authorSpan.onclick = function(e) { e.stopPropagation(); handleAuthorClick(item.author.email || item.author.name); };
+              authorInfoDiv.appendChild(authorSpan);
+
+              metaDiv.appendChild(authorInfoDiv); // 左寄せ部分をmetaDivに追加
+
+              // 右寄せ部分 (日時)
+              const updatedDateSpan = document.createElement('span');
+              updatedDateSpan.className = 'timestamp-class'; // 必要ならクラス適用
+              updatedDateSpan.textContent = `更新日時: ${formatTimestamp(item.timestamp)}`;
+              metaDiv.appendChild(updatedDateSpan); // 右寄せ部分をmetaDivに追加
+
+              itemDiv.appendChild(metaDiv); // ★★★ コンテンツの後に追加
+
+              // actionsDiv の追加は変更なし
+              const actionsDiv = document.createElement('div');
+              actionsDiv.className = 'article-actions';
+              if (item.author.email === currentUserEmail) {
+                  const editButton = document.createElement('button');
+                  editButton.textContent = '編集';
+                  editButton.className = 'edit-btn';
+                  editButton.onclick = function(e) { e.stopPropagation(); handleEditClick(item.id); };
+
+                  const deleteButton = document.createElement('button');
+                  deleteButton.textContent = '削除';
+                  deleteButton.className = 'delete-btn';
+                  deleteButton.onclick = function(e) { e.stopPropagation(); handleDeleteClick(item.id); };
+
+                  actionsDiv.appendChild(editButton);
+                  actionsDiv.appendChild(deleteButton);
+              }
+              itemDiv.appendChild(actionsDiv);
+
+            } else if (item.type === 'slack') {
+              itemDiv.classList.add('slack-message'); // Slack用クラス追加
+              itemDiv.onclick = function() { showSlackDetail(item); }; // Slack詳細表示関数
+
+              const headerDiv = document.createElement('div');
+              headerDiv.className = 'slack-header';
+
+              // Slackバッジ
+              const slackBadge = document.createElement('span');
+              slackBadge.className = 'tag slack-badge';
+              slackBadge.textContent = 'Slack';
+              headerDiv.appendChild(slackBadge);
+
+              // チャンネル名
+              const channelSpan = document.createElement('span');
+              channelSpan.className = 'slack-channel';
+              channelSpan.textContent = `#${item.channel?.name || '不明'}`;
+              headerDiv.appendChild(channelSpan);
+              itemDiv.appendChild(headerDiv); // ★★★ まずヘッダーを追加
+
+              // ★★★ 修正: タグをヘッダーの直下に追加 ★★★
+              const tagsDiv = document.createElement('div');
+              tagsDiv.className = 'article-tags';
+              if (item.tags && item.tags.length > 0) {
+                item.tags.forEach(tag => {
+                  const tagSpan = document.createElement('span');
+                  tagSpan.className = 'tag';
+                  if (selectedTags.includes(tag)) { tagSpan.classList.add('selected'); }
+                  // Slackタグは異なるスタイルにするなど、必要なら調整
+                  if (tag === 'slack') tagSpan.classList.add('slack-tag');
+                  else if (tag.startsWith('channel:')) tagSpan.classList.add('channel-tag');
+
+                  tagSpan.textContent = tag;
+                  tagSpan.onclick = function(e) { e.stopPropagation(); handleTagClick(tag); };
+                  tagsDiv.appendChild(tagSpan);
+                });
+              }
+              itemDiv.appendChild(tagsDiv); // ★★★ ヘッダーの後に追加
+
+              // メッセージ内容プレビュー
+              const contentDiv = document.createElement('div');
+              contentDiv.className = 'article-content slack-content'; // CSSクラス調整
+              const previewContent = (item.content || '').substring(0, 150) + '...';
+              contentDiv.textContent = previewContent; // textContentで表示
+              itemDiv.appendChild(contentDiv); // ★★★ タグの後に追加
+              
+              // ★★★ 修正: 投稿者情報と日時 (左寄せ要素と右寄せ要素に分割) ★★★
+              const metaDiv = document.createElement('div');
+              metaDiv.className = 'article-meta';
+              metaDiv.style.display = 'flex';
+              metaDiv.style.width = '100%'; // 幅を100%に
+              metaDiv.style.alignItems = 'center';
+              metaDiv.style.justifyContent = 'space-between'; // 左寄せと右寄せを実現
+
+              // 左寄せ部分 (アバター + 名前)
+              const authorInfoDiv = document.createElement('div');
+              authorInfoDiv.style.display = 'flex';
+              authorInfoDiv.style.alignItems = 'center';
+              authorInfoDiv.style.gap = '4px'; // アバターと名前の間の隙間
+
+              const DEFAULT_AVATAR_URL = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2U9ImN1cnJlbnRDb2xvciIgc3Ryb2tlLXdpZHRoPSIyIiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiPjxwYXRoIGQ9Ik0yMCAyMXYtMmE0IDQgMCAwIDAtNC00SDhhNCA0IDAgMCAwLTQgNHYyIj48L3BhdGg+PGNpcmNsZSBjeD0iMTIiIGN5PSI3IiByPSI0Ij48L2NpcmNsZT48L3N2Zz4=';
+
+              const avatarImg = document.createElement('img');
+              avatarImg.src = item.author.avatar || DEFAULT_AVATAR_URL;
+              avatarImg.alt = item.author.name || '不明';
+              avatarImg.className = 'avatar-class';
+              avatarImg.style.width = '24px';
+              avatarImg.style.height = '24px';
+              avatarImg.style.borderRadius = '50%';
+              avatarImg.onerror = function() { this.src = DEFAULT_AVATAR_URL; };
+              authorInfoDiv.appendChild(avatarImg); // 左寄せDivに追加
+
+              const authorSpan = document.createElement('span');
+              authorSpan.className = 'author-name-class';
+              authorSpan.textContent = item.author.name || '不明';
+              authorSpan.style.cursor = 'pointer';
+              authorSpan.style.textDecoration = 'underline';
+              authorSpan.style.fontSize = '0.875rem';
+              authorSpan.onclick = function(e) { e.stopPropagation(); handleAuthorClick(item.author.name); };
+              authorInfoDiv.appendChild(authorSpan); // 左寄せDivに追加
+
+              metaDiv.appendChild(authorInfoDiv); // 左寄せ部分をmetaDivに追加
+              
+              // 右寄せ部分 (日時)
+              const timeSpan = document.createElement('span');
+              timeSpan.className = 'timestamp-class';
+              timeSpan.textContent = formatTimestamp(item.timestamp);
+              timeSpan.style.fontSize = '0.75rem';
+              timeSpan.style.color = '#666';
+              metaDiv.appendChild(timeSpan); // 右寄せ部分をmetaDivに追加
+
+              itemDiv.appendChild(metaDiv); // ★★★ コンテンツの後に追加
+            }
+            // --- 表示切り替え ここまで ---
+
+            articlesListDiv.appendChild(itemDiv);
+          });
+        } else {
+          articlesListDiv.innerHTML = '<p>該当するコンテンツがありません。</p>';
+        }
+        updateSelectedTagsDisplay();
+      }
+      
+      // --- ★★★ 修正: 初回コンテンツ読み込み関数 ★★★ ---
+      function loadInitialContent() { // 関数名を変更
+        articlesListDiv.innerHTML = '<p>読み込み中...</p>';
+        google.script.run.withSuccessHandler(function(email) {
+            currentUserEmail = email;
+            google.script.run
+                .withSuccessHandler(function(content) {
+                    allContent = content; // 全データを保存
+                    filterAndDisplayContent(); // フィルター＆表示
+                    if (pendingArticleId) {
+                      showArticleDetail(pendingArticleId);
+                      pendingArticleId = null;
+                    }
+          })
+          .withFailureHandler(function(error) {
+                    articlesListDiv.innerHTML = '<p>コンテンツの読み込みに失敗しました: ' + error.message + '</p>';
+                })
+                .getContent(); // サーバーサイド関数を変更
+        }).withFailureHandler(function(error){
+            console.error("User email acquisition failed:", error);
+            articlesListDiv.innerHTML = '<p>ユーザー情報の取得に失敗しました。</p>';
+        }).getUserEmail();
+      }
+
+      // --- フォーム送信処理 (編集モード対応) ---
+      articleForm.addEventListener('submit', function(e) {
+        e.preventDefault();
+        submitButton.disabled = true;
+        statusDiv.textContent = editArticleIdInput.value ? '更新中...' : '投稿中...';
+        
+        tagsHiddenInput.value = currentFormTags.join(','); 
+        
+        const formData = {
+          id: editArticleIdInput.value || null,
+          title: titleInput.value,
+          content: contentTextArea.value,
+          tagsString: tagsHiddenInput.value 
+        };
+        
+        // ★★★ デバッグログ追加 1 ★★★
+        console.log('google.script.run object:', google.script.run);
+        console.log('Is updateArticle available:', typeof google.script.run.updateArticle);
+        console.log('Is addArticle available:', typeof google.script.run.addArticle);
+        console.log('Submitting formData:', formData);
+        
+        const serverFunction = formData.id 
+                              ? google.script.run.updateArticle // ★★★ 修正: ここではまだ呼び出さない
+                              : google.script.run.addArticle; // ★★★ 修正: ここではまだ呼び出さない
+
+        // ★★★ デバッグログ追加 2 ★★★
+        console.log('Selected server function type:', typeof serverFunction);
+
+        // ★★★ 修正点: undefined チェックと呼び出し形式の変更 ★★★
+        if (typeof serverFunction === 'function') {
+        google.script.run
+          .withSuccessHandler(function(response) {
+                    console.log('Server function success:', response);
+            statusDiv.textContent = response;
+                    showList(); 
+          })
+          .withFailureHandler(function(error) {
+                    console.error('Server function failure:', error);
+            statusDiv.textContent = 'エラー: ' + error.message;
+            submitButton.disabled = false;
+          })
+                [formData.id ? 'updateArticle' : 'addArticle'](formData); // 関数名を文字列で指定して呼び出す
+        } else {
+            console.error('Error: Server function is not available!', formData.id ? 'updateArticle' : 'addArticle');
+            statusDiv.textContent = 'エラー: サーバー関数を呼び出せません。';
+            submitButton.disabled = false; // ★ エラー時もボタンを有効化
+        }
+      });
+      
+      // --- ★★★ 新設: 編集処理 (変更なし) ★★★ ---
+      function handleEditClick(articleId) {
+          showForm();
+          statusDiv.textContent = '記事を読み込み中...';
+          google.script.run
+              .withSuccessHandler(function(article) {
+                  if (article) {
+                      formTitle.textContent = '記事を編集';
+                      editArticleIdInput.value = article.id;
+                      titleInput.value = article.title;
+                      contentTextArea.value = article.content;
+                      currentFormTags = article.tags || [];
+                      renderFormTags();
+                      submitButton.textContent = '更新する';
+                      cancelEditButton.style.display = 'inline-block';
+                      statusDiv.textContent = '';
+                      // フォームにスクロール
+                      formContainer.scrollIntoView({ behavior: 'smooth' });
+                  } else {
+                       statusDiv.textContent = '記事の読み込みに失敗しました。';
+                  }
+              })
+              .withFailureHandler(function(error) {
+                   statusDiv.textContent = '記事の読み込みエラー: ' + error.message;
+              })
+              .getArticleById(articleId);
+      }
+      
+      // --- ★★★ 新設: 編集キャンセル処理 (変更なし) ★★★ ---
+      function cancelEdit() {
+          console.log("--- cancelEdit() called ---"); // ★ デバッグログ追加
+          formTitle.textContent = '記事投稿フォーム';
+          editArticleIdInput.value = '';
+          articleForm.reset();
+          currentFormTags = [];
+          renderFormTags();
+          submitButton.textContent = '投稿する';
+          cancelEditButton.style.display = 'none';
+          statusDiv.textContent = '';
+          showEditor(); // 編集キャンセル時はエディタ表示に戻す
+          if (formContainer.style.display === 'block') { // フォームが表示されている場合のみ
+              showList();
+          }
+      }
+      
+      // --- ★★★ 新設: 削除処理 (変更なし、記事専用) ★★★ ---
+      function handleDeleteClick(articleId) {
+          // Slackメッセージは削除不可とする
+          const itemDiv = document.querySelector(`.article[data-item-id='${articleId}']`);
+          if (itemDiv && itemDiv.getAttribute('data-type') === 'slack') {
+              alert('Slackメッセージは削除できません。');
+              return;
+          }
+
+          if (confirm('この記事を削除してもよろしいですか？\nこの操作は元に戻せません。')) {
+              statusDiv.textContent = '削除中...';
+              google.script.run
+                  .withSuccessHandler(function(response) {
+                      statusDiv.textContent = response;
+                      showList(); // リストを再読み込み
+                      setTimeout(() => { statusDiv.textContent = ''; }, 3000); // 3秒後にメッセージ削除
+                  })
+                  .withFailureHandler(function(error) {
+                       statusDiv.textContent = '削除エラー: ' + error.message;
+                  })
+                  .deleteArticle(articleId);
+          }
+      }
+
+      // --- ★★★ 修正: 検索処理 ★★★ ---
+      searchInput.addEventListener('input', function() {
+        clearTimeout(searchTimeout);
+        searchStatusDiv.textContent = '入力中...';
+        searchTimeout = setTimeout(() => {
+          const query = searchInput.value.trim();
+          if (query === '') {
+            searchStatusDiv.textContent = '';
+            loadInitialContent(); // ★★★ 修正: 統合コンテンツ読み込み
+            selectedAuthor = null; // ★★★ 追加: 検索クリア時は著者フィルターも解除
+            selectedTags = [];     // ★★★ 追加: 検索クリア時はタグフィルターも解除
+          } else {
+            searchStatusDiv.textContent = '検索中...';
+            google.script.run
+              .withSuccessHandler(function(results) {
+                allContent = results; // 検索結果を全データとして一時的に保持
+                filterAndDisplayContent(); // フィルター(現状なし)＆表示
+                searchStatusDiv.textContent = `${results.length} 件見つかりました。`;
+              })
+              .withFailureHandler(function(error) {
+                searchStatusDiv.textContent = '検索エラー: ' + error.message;
+              })
+              .searchContent(query); // ★★★ 修正: サーバーサイド関数呼び出し
+          }
+        }, 500); // 500ms待ってから検索実行
+      });
+      
+      // --- ★★★ 新設: フィルター＆表示更新関数 ★★★ ---
+      function filterAndDisplayContent() {
+          let filtered = [...allContent]; // 全データからコピー
+
+          // 著者フィルター
+          if (selectedAuthor) {
+            filtered = filtered.filter(item => {
+              // 記事はemail、Slackはnameで比較（必要に応じて調整）
+              return (item.type === 'article' && item.author.email === selectedAuthor) ||
+                     (item.type === 'slack' && item.author.name === selectedAuthor);
+            });
+          }
+
+          // タグフィルター
+          if (selectedTags.length > 0) {
+            const lowerCaseTags = selectedTags.map(tag => tag.toLowerCase());
+            filtered = filtered.filter(item => {
+              const itemTagsLower = (item.tags || []).map(t => t.toLowerCase());
+              return lowerCaseTags.every(searchTag => itemTagsLower.includes(searchTag));
+            });
+          }
+
+          // ソート（現在選択されているソート順を適用 - 必要ならソート状態をグローバル変数化）
+          // filtered.sort(...); // ここでソートロジックを追加
+
+          displayContent(filtered); // フィルタリング/ソート後のデータを表示
+          updateSelectedTagsDisplay(); // 選択中フィルター表示も更新
+      }
+
+      // --- ★★★ 修正: タグクリックハンドラ (クライアントサイドフィルター) ★★★ ---
+      function handleTagClick(tag) {
+        const index = selectedTags.indexOf(tag);
+        if (index > -1) {
+          selectedTags.splice(index, 1); // 既に選択されていれば削除
+        } else {
+          selectedTags.push(tag); // 選択されていなければ追加
+        }
+        // ★★★ 修正: サーバー再検索ではなくクライアントサイドでフィルタリング ★★★
+        searchInput.value = ''; // 全文検索クリア
+        // selectedAuthor = null; // タグフィルター時に著者フィルターもクリアするかは要件次第 (一旦コメントアウト)
+        filterAndDisplayContent(); // フィルターして表示更新
+        showSearch(); // 検索/フィルター表示エリアを見せる
+      }
+      
+      // --- ★★★ 新設: 選択中タグ表示更新関数 (変更なし) ★★★ ---
+      function updateSelectedTagsDisplay() {
+        selectedTagsDiv.innerHTML = ''; // クリア
+
+        // ★★★ 修正: 著者またはタグが選択されている場合に表示 ★★★
+        const hasFilters = selectedTags.length > 0 || selectedAuthor;
+
+        if (hasFilters) {
+          selectedTagsDiv.style.display = 'flex'; // 表示エリアを表示
+
+          const text = document.createElement('span');
+          text.textContent = 'フィルター: ';
+          selectedTagsDiv.appendChild(text);
+
+          // 選択中の著者を表示
+          if (selectedAuthor) {
+              const authorBadge = document.createElement('span');
+              authorBadge.className = 'tag selected author-tag'; // 著者用クラス追加
+              // ★★★ TODO: allContent から著者名を取得するロジックを追加 ★★★
+              // 簡単な例として selectedAuthor をそのまま表示
+              let authorDisplayName = selectedAuthor;
+              // allContent から email または name が一致するものを探す
+              const authorItem = allContent.find(item =>
+                  (item.type === 'article' && item.author.email === selectedAuthor) ||
+                  (item.type === 'slack' && item.author.name === selectedAuthor)
+              );
+              if (authorItem) {
+                 authorDisplayName = authorItem.author.name || authorItem.author.email || selectedAuthor;
+              }
+
+              authorBadge.textContent = `著者: ${authorDisplayName}`;
+              const removeBtn = document.createElement('button');
+              removeBtn.textContent = '×';
+              removeBtn.className = 'tag-remove-btn';
+              removeBtn.onclick = (e) => {
+                  e.stopPropagation();
+                  selectedAuthor = null; // 著者フィルター解除
+                  // ★★★ 修正: フィルター解除後、全コンテンツをフィルターして再表示 ★★★
+                  filterAndDisplayContent(); // 表示更新
+              };
+              authorBadge.appendChild(removeBtn);
+              selectedTagsDiv.appendChild(authorBadge);
+          }
+
+          // 選択中のタグを表示
+          selectedTags.forEach(tag => {
+            const tagSpan = document.createElement('span');
+            tagSpan.className = 'tag selected';
+            tagSpan.textContent = tag;
+            const removeBtn = document.createElement('button');
+            removeBtn.textContent = '×';
+            removeBtn.className = 'tag-remove-btn';
+            removeBtn.onclick = (e) => {
+              e.stopPropagation();
+              handleTagClick(tag); // クリックで削除 (内部で filterAndDisplayContent が呼ばれるはず)
+            };
+            tagSpan.appendChild(removeBtn);
+            selectedTagsDiv.appendChild(tagSpan);
+          });
+
+          // クリアボタンを追加
+          const clearButton = document.createElement('button');
+          clearButton.textContent = 'フィルターをクリア';
+          clearButton.className = 'clear-tags-btn';
+          clearButton.onclick = clearSelectedTags; // 修正されたクリア関数を呼ぶ
+          selectedTagsDiv.appendChild(clearButton);
+
+        } else {
+          selectedTagsDiv.style.display = 'none'; // フィルターがない場合はエリアごと非表示
+        }
+      }
+
+      // --- ★★★ 新設: 選択タグクリア関数 ★★★ ---
+      function clearSelectedTags() {
+        selectedTags = [];
+        selectedAuthor = null; // ★★★ 追加: 著者フィルターもクリア
+        searchInput.value = '';
+        searchStatusDiv.textContent = '';
+        showList(); // showList内で loadInitialContent が呼ばれる
+        filterAndDisplayContent(); // 念のため表示更新
+      }
+
+      // --- ★★★ 新設: 著者クリックハンドラ ★★★ ---
+      function handleAuthorClick(authorIdentifier) { // email or name
+          if (selectedAuthor === authorIdentifier) {
+            selectedAuthor = null; // 再度クリックで解除
+          } else {
+            selectedAuthor = authorIdentifier;
+          }
+          searchInput.value = ''; // 全文検索クリア
+          // selectedTags = []; // タグフィルターもクリアするかどうかは要件次第
+          filterAndDisplayContent(); // フィルターして表示更新
+          showSearch(); // 検索/フィルター表示エリアを見せる
+      }
+
+      // --- ★★★ 新設: フォーム用タグ関連処理 (変更なし) ★★★ ---
+      function renderFormTags() {
+        // 既存のタグバッジをクリア (入力欄は残す)
+        const existingBadges = tagContainer.querySelectorAll('.tag');
+        existingBadges.forEach(badge => tagContainer.removeChild(badge));
+
+        // 現在のタグ配列からバッジを再描画
+        currentFormTags.forEach(tag => {
+          const tagSpan = document.createElement('span');
+          tagSpan.className = 'tag';
+          tagSpan.textContent = tag;
+          const removeBtn = document.createElement('button');
+          removeBtn.textContent = '×';
+          removeBtn.className = 'tag-remove-btn form-tag-remove-btn'; // フォーム用クラス追加
+          removeBtn.onclick = (e) => {
+            e.preventDefault(); // フォーム送信を防ぐ
+            removeFormTag(tag);
+          };
+          tagSpan.appendChild(removeBtn);
+          // 入力欄の前にバッジを挿入
+          tagContainer.insertBefore(tagSpan, tagInput);
+        });
+        tagsHiddenInput.value = currentFormTags.join(','); // 隠しフィールドも更新
+      }
+
+      function addFormTag(tag) {
+        const trimmedTag = tag.trim();
+        if (trimmedTag && !currentFormTags.includes(trimmedTag)) {
+          currentFormTags.push(trimmedTag);
+          renderFormTags();
+        }
+      }
+
+      function removeFormTag(tagToRemove) {
+        currentFormTags = currentFormTags.filter(tag => tag !== tagToRemove);
+        renderFormTags();
+      }
+
+      // タグ入力欄のイベントリスナー
+      tagInput.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter' || e.key === ',' || e.key === ' ' || e.key === '　') {
+          e.preventDefault(); // デフォルトの動作（フォーム送信や文字入力）をキャンセル
+          addFormTag(tagInput.value);
+          tagInput.value = ''; // 入力欄をクリア
+        }
+      });
+
+      tagInput.addEventListener('blur', function() {
+        // フォーカスが外れた時にもタグを追加
+        addFormTag(tagInput.value);
+        tagInput.value = '';
+      });
+
+      // --- ★★★ 修正: タイムスタンプフォーマット関数 ★★★ ---
+      function formatTimestamp(timestamp) {
+        if (!timestamp) return '不明';
+        try {
+          // timestampがUnixタイムスタンプ(秒)と仮定
+          const date = new Date(parseFloat(timestamp) * 1000);
+          if (isNaN(date.getTime())) {
+            // ISO文字列などの他の形式も試す
+            const parsedDate = new Date(timestamp);
+            if (!isNaN(parsedDate.getTime())) {
+              return parsedDate.toLocaleString('ja-JP');
+            }
+            return '日付形式エラー';
+          }
+          return date.toLocaleString('ja-JP');
+        } catch (e) {
+          console.error("Timestamp format error:", e, timestamp);
+          return '日付形式エラー';
+        }
+      }
+
+      // --- ★★★ 修正: 記事詳細表示モーダル関連 ★★★ ---
+      function showArticleDetail(articleId) {
+          // Slackメッセージ詳細モーダルが表示されていたら閉じる
+          closeSlackDetailModal();
+          
+          // ★★★ 修正: allContent から該当記事を検索 ★★★
+          const article = allContent.find(item => item.type === 'article' && item.id === articleId);
+
+          if (article) {
+              // ★★★ 修正: 基本情報を設定して即座にモーダルを表示 ★★★
+              modalTitle.textContent = article.title || '(タイトルなし)';
+
+              // メタ情報表示
+              modalMeta.innerHTML = ''; // クリア
+              const authorSpan = document.createElement('span');
+              const authorName = article.author.name || article.author.email || '不明';
+              authorSpan.textContent = `投稿者: ${authorName}`;
+              
+              const updatedDateSpan = document.createElement('span');
+              updatedDateSpan.textContent = `更新日時: ${formatTimestamp(article.timestamp)}`;
+              
+              modalMeta.appendChild(authorSpan);
+              modalMeta.appendChild(updatedDateSpan);
+
+              // タグ表示
+              modalTags.innerHTML = ''; // クリア
+              if (article.tags && article.tags.length > 0) {
+                  article.tags.forEach(tag => {
+                      const tagSpan = document.createElement('span');
+                      tagSpan.className = 'tag';
+                      tagSpan.textContent = tag;
+                      modalTags.appendChild(tagSpan);
+                  });
+              }
+
+              // 共有ボタン設定
+              if (modalActions) {
+                  const shareUrl = buildArticleShareUrl(article.id);
+                  modalActions.style.display = 'flex';
+                  modalActions.style.gap = '8px';
+                  modalShareStatus.textContent = '';
+                  modalShareButton.onclick = function() {
+                      copyToClipboard(shareUrl)
+                        .then(() => { modalShareStatus.textContent = 'URLをコピーしました'; })
+                        .catch(() => { modalShareStatus.textContent = 'コピーに失敗しました'; });
+                  };
+              }
+
+              // ★★★ 修正: コンテンツ部分をローディング表示に ★★★
+              modalContent.innerHTML = ''; // コンテンツをクリア
+              const loadingElement = document.getElementById('modalContentLoading');
+              if (loadingElement) {
+                  loadingElement.style.display = 'block';
+                  modalContent.appendChild(loadingElement);
+              }
+              
+              // モーダルを即時表示
+              detailModal.style.display = 'flex';
+              
+              // ★★★ 修正: 非同期でMarkdownパース処理を実行 ★★★
+              setTimeout(() => {
+                  if (typeof article.content !== 'undefined') {
+                      // パース処理後にコンテンツを表示
+                      const parsedContent = marked.parse(article.content || '');
+                      
+                      // ローディング表示を非表示に
+                      if (loadingElement) {
+                          loadingElement.style.display = 'none';
+                      }
+                      
+                      // コンテンツを設定
+                      modalContent.innerHTML = parsedContent;
+
+                      // 先頭に HR が連続する場合は除去
+                      while (modalContent.firstElementChild && modalContent.firstElementChild.tagName === 'HR') {
+                        modalContent.removeChild(modalContent.firstElementChild);
+                      }
+
+                      // mermaid レンダリング
+                      renderMermaid(modalContent);
+                      
+                      // リンク設定
+                      const linksInModal = modalContent.querySelectorAll('a');
+                      linksInModal.forEach(link => {
+                          link.target = '_blank';
+                          link.rel = 'noopener noreferrer';
+                      });
+                  } else {
+                      // コンテンツがない場合
+                      if (loadingElement) {
+                          loadingElement.style.display = 'none';
+                      }
+                      modalContent.innerHTML = '<p>記事の内容を読み込めませんでした。</p>';
+                      console.warn(`Article content not found for ID: ${articleId}`);
+                  }
+              }, 0); // setTimeout を使って非同期化
+          } else {
+              alert('記事の詳細データが見つかりませんでした。');
+              console.error(`Article not found in allContent for ID: ${articleId}`);
+          }
+      }
+
+      function closeDetailModal() {
+          detailModal.style.display = 'none';
+          if (modalShareStatus) modalShareStatus.textContent = '';
+      }
+
+      // --- ★★★ 新設: Slackメッセージ詳細モーダル関連 ★★★ ---
+      function showSlackDetail(item) {
+        // 記事詳細モーダルが表示されていたら閉じる
+        closeDetailModal();
+
+        if (!slackDetailModal) {
+          console.error("Slack detail modal element not found!");
+          return;
+        }
+
+        // モーダル内容の設定
+        if (slackModalAuthor) {
+          slackModalAuthor.innerHTML = ''; // クリア
+          if (item.author.avatar) {
+            const img = document.createElement('img');
+            img.src = item.author.avatar;
+            img.alt = item.author.name;
+            img.className = 'slack-avatar large'; // 大きめのアバター用クラス
+            slackModalAuthor.appendChild(img);
+          }
+          const nameSpan = document.createElement('span');
+          nameSpan.textContent = item.author.name || '不明';
+          slackModalAuthor.appendChild(nameSpan);
+        }
+
+        if (slackModalMeta) {
+          slackModalMeta.innerHTML = ''; // クリア
+          const channelSpan = document.createElement('span');
+          channelSpan.textContent = `チャンネル: #${item.channel?.name || '不明'}`;
+          const timeSpan = document.createElement('span');
+          timeSpan.textContent = `投稿日時: ${formatTimestamp(item.timestamp)}`;
+          slackModalMeta.appendChild(channelSpan);
+          slackModalMeta.appendChild(timeSpan);
+        }
+
+        if (slackModalContent) {
+          // SlackメッセージはMarkdownパースしない (簡易リンク化などをここで行うことも可能)
+          // 例: 簡単なリンク置換
+          let contentHtml = item.content || '';
+          // Slack形式のリンク <url|text> をHTMLリンクに
+          contentHtml = contentHtml.replace(/<(https?:\/\/[^\|>]+)\|([^>]+)>/g, '<a href="$1" target="_blank" rel="noopener noreferrer">$2</a>');
+          // Slack形式のリンク <url> をHTMLリンクに
+          contentHtml = contentHtml.replace(/<(https?:\/\/[^>]+)>/g, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>');
+          // 通常のURLをリンクに
+          contentHtml = contentHtml.replace(/(?<![<"'=])(https?:\/\/[^\s<]+[^<.,:;"')\]\s])/g, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>');
+          // 改行を <br> に
+          contentHtml = contentHtml.replace(/\n/g, '<br>');
+          slackModalContent.innerHTML = contentHtml;
+        }
+
+        if (slackModalLink) {
+            if (item.link) {
+                slackModalLink.href = item.link;
+                slackModalLink.style.display = 'inline-block';
+            } else {
+                slackModalLink.style.display = 'none';
+            }
+        }
+
+        slackDetailModal.style.display = 'flex'; // モーダル表示
+      }
+
+      function closeSlackDetailModal() {
+        if (slackDetailModal) {
+          slackDetailModal.style.display = 'none';
+        }
+      }
+
+      // --- ★★★ 新設: フォームプレビュー関連 (変更なし) ★★★ ---
+      function showEditor() {
+          contentTextArea.style.display = 'block';
+          formPreviewDiv.style.display = 'none';
+          editTabButton.classList.add('active');
+          previewTabButton.classList.remove('active');
+      }
+
+      function showPreview() {
+          // ★★★ デバッグログ追加 (11) ★★★
+          const markdownInput = contentTextArea.value || '';
+          console.log('showPreview called. Markdown input:', markdownInput);
+
+          // marked.parseを実行してプレビューを更新
+          const generatedHtml = marked.parse(markdownInput);
+          // ★★★ デバッグログ追加 (12) ★★★
+          console.log('Generated HTML by marked.parse:', generatedHtml);
+
+          formPreviewDiv.innerHTML = generatedHtml;
+          // ★★★ デバッグログ追加 (13) ★★★
+          console.log('formPreviewDiv innerHTML set. Current innerHTML:', formPreviewDiv.innerHTML);
+
+          contentTextArea.style.display = 'none';
+          formPreviewDiv.style.display = 'block';
+          editTabButton.classList.remove('active');
+          previewTabButton.classList.add('active');
+      }
+
+      // 初期状態はエディタ表示
+      showEditor();
+
+      // --- ★★★ 新設: 画像アップロード関連処理 ★★★ ---
+
+      // ファイル選択ダイアログを開く
+      function triggerFileInput() {
+          imageUploadInput.click();
+      }
+
+      // ファイルが選択されたときの処理
+      imageUploadInput.addEventListener('change', handleFileSelect);
+      function handleFileSelect(event) {
+          const files = event.target.files;
+          if (files && files[0]) {
+              uploadFile(files[0]);
+          }
+          // 同じファイルを連続で選択できるように、inputの値をリセット
+          event.target.value = null;
+      }
+
+      // ドラッグオーバー時の処理
+      contentTextArea.addEventListener('dragover', handleDragOver);
+      function handleDragOver(event) {
+          event.preventDefault(); // デフォルトの動作を防ぐ
+          // 必要に応じて、ドラッグ中の見た目を変更
+          contentTextArea.classList.add('drag-over');
+      }
+
+      // ドラッグがエリア外に出たときの処理
+      contentTextArea.addEventListener('dragleave', (event) => {
+          contentTextArea.classList.remove('drag-over');
+      });
+
+      // ドロップ時の処理
+      contentTextArea.addEventListener('drop', handleDrop);
+      function handleDrop(event) {
+          event.preventDefault();
+          contentTextArea.classList.remove('drag-over');
+          const files = event.dataTransfer.files;
+          if (files && files.length > 0) {
+              const imageFile = Array.from(files).find(file => file.type.startsWith('image/'));
+              if (imageFile) {
+                  uploadFile(imageFile);
+              } else {
+                  uploadStatusDiv.textContent = '画像ファイルのみドロップできます。';
+                  setTimeout(() => { uploadStatusDiv.textContent = ''; }, 3000);
+              }
+          }
+      }
+
+      // ペースト時の処理
+      contentTextArea.addEventListener('paste', handlePaste);
+      function handlePaste(event) {
+          const items = (event.clipboardData || window.clipboardData).items;
+          for (let i = 0; i < items.length; i++) {
+              if (items[i].type.indexOf('image') !== -1) {
+                  const file = items[i].getAsFile();
+                  if (file) {
+                       event.preventDefault(); // デフォルトのペースト動作を防ぐ
+                       uploadFile(file);
+                       break; // 最初の画像ファイルのみ処理
+                  }
+              }
+          }
+      }
+
+      // ファイルアップロード処理
+      function uploadFile(file) {
+          if (!file.type.startsWith('image/')) {
+              uploadStatusDiv.textContent = '画像ファイルを選択してください。';
+              setTimeout(() => { uploadStatusDiv.textContent = ''; }, 3000);
+              return;
+          }
+          
+          // オプション: ファイルサイズチェック
+          // if (file.size > 5 * 1024 * 1024) { // 5MB制限の例
+          //     uploadStatusDiv.textContent = 'ファイルサイズが大きすぎます (最大5MB)。';
+          //     setTimeout(() => { uploadStatusDiv.textContent = ''; }, 3000);
+          //     return;
+          // }
+
+          uploadStatusDiv.textContent = '画像をアップロード中...';
+          uploadImageButton.disabled = true; // アップロード中はボタンを無効化
+
+          const reader = new FileReader();
+          reader.onload = function(e) {
+              const base64Data = e.target.result.split(',')[1]; // Base64データ部分のみ取得
+              const fileName = file.name;
+              const mimeType = file.type;
+
+              google.script.run
+                  .withSuccessHandler(function(result) {
+                      handleUploadSuccess(result);
+                  })
+                  .withFailureHandler(function(error) {
+                      console.error('Upload failed:', error);
+                      uploadStatusDiv.textContent = 'アップロードエラー: ' + error.message;
+                      setTimeout(() => { uploadStatusDiv.textContent = ''; }, 5000);
+                      uploadImageButton.disabled = false; // ボタンを有効化
+                  })
+                  .uploadImageToDrive(fileName, mimeType, base64Data); // GAS側の関数を呼び出す
+          };
+          reader.onerror = function(error) {
+              console.error('FileReader error:', error);
+              uploadStatusDiv.textContent = 'ファイル読み込みエラーが発生しました。';
+              setTimeout(() => { uploadStatusDiv.textContent = ''; }, 3000);
+              uploadImageButton.disabled = false;
+          };
+          reader.readAsDataURL(file); // Base64として読み込み開始
+      }
+
+      // ★★★ 新設: アップロードステータス表示関数 ★★★
+      function showUploadStatus(message, isError = false) {
+          uploadStatusDiv.textContent = message;
+          uploadStatusDiv.style.color = isError ? '#d9534f' : '#5cb85c'; // エラーは赤、成功は緑
+          // 数秒後にメッセージを消す (任意)
+          /*
+          setTimeout(() => {
+              uploadStatusDiv.textContent = '';
+          }, 5000);
+          */
+      }
+
+      // テキストエリアのカーソル位置にテキストを挿入するヘルパー関数
+      function insertTextAtCursor(textarea, textToInsert) {
+        // ★★★ デバッグログ追加 (7) ★★★
+        console.log('insertTextAtCursor called. textarea:', textarea, 'textToInsert:', textToInsert);
+        
+        if (!textarea || typeof textToInsert === 'undefined') {
+           console.error('insertTextAtCursor: Invalid arguments.');
+           return;
+        }
+
+        const startPos = textarea.selectionStart;
+        const endPos = textarea.selectionEnd;
+        const currentText = textarea.value;
+        // ★★★ デバッグログ追加 (8) ★★★
+        console.log('Cursor positions:', startPos, endPos);
+        console.log('Current textarea value (before insert):', currentText);
+
+        textarea.value = currentText.substring(0, startPos) + textToInsert + currentText.substring(endPos);
+        // ★★★ デバッグログ追加 (9) ★★★
+        console.log('New textarea value (after insert):', textarea.value);
+
+        // 挿入後のカーソル位置を調整
+        const newCursorPos = startPos + textToInsert.length;
+        textarea.selectionStart = newCursorPos;
+        textarea.selectionEnd = newCursorPos;
+        // ★★★ デバッグログ追加 (10) ★★★
+        console.log('New cursor position:', textarea.selectionStart);
+
+        textarea.focus(); // フォーカスを戻す
+      }
+
+      function handleUploadSuccess(result) {
+        // ★★★ デバッグログ追加 (1) ★★★
+        console.log('handleUploadSuccess called. Result:', result);
+
+        uploadImageButton.disabled = false; // ボタンを有効化
+        imageUploadInput.value = ''; // 入力をリセット
+
+        if (result && result.success) {
+          // ★★★ デバッグログ追加 (2) ★★★
+          console.log('Upload reported as successful. Checking fileUrl...');
+          const imageUrl = result.fileUrl;
+          console.log('imageUrl:', imageUrl); // ★★★ imageUrl の値を確認 ★★★
+
+          if (imageUrl) {
+            const fileNameForAlt = result.fileName || '画像'; // Altテキスト用
+            // ★★★ デバッグログ追加 (3) ★★★
+            console.log('imageUrl found. Calling insertTextAtCursor with:', `\n![${fileNameForAlt}](${imageUrl})\n`);
+
+            insertTextAtCursor(contentTextArea, `\n![${fileNameForAlt}](${imageUrl})\n`);
+            showUploadStatus(`画像 [${result.fileName || 'ファイル名不明'}] をアップロードしました。`, false);
+
+            // プレビューも更新 (フォームが表示されている場合)
+            if (formContainer.style.display !== 'none') {
+               console.log('Updating preview...'); // ★★★ デバッグログ追加 (4) ★★★
+               showPreview(); // プレビューがあれば更新
+            }
+          } else {
+             // ★★★ デバッグログ追加 (5) ★★★
+             console.warn('handleUploadSuccess: imageUrl is missing or empty in the successful result.');
+             showUploadStatus('URLの取得に失敗しました。', true);
+          }
+        } else {
+          // ★★★ デバッグログ追加 (6) ★★★
+          console.error('handleUploadSuccess: Upload failed or success flag is false. Error:', result ? result.error : 'Result object is missing');
+          showUploadStatus(`アップロード失敗: ${result?.error || '不明なエラー'}`, true);
+        }
+      }
+
+      // 共有用URL生成
+      function buildArticleShareUrl(articleId) {
+        try {
+          const base = (typeof WEBAPP_BASE_URL !== 'undefined' && WEBAPP_BASE_URL) ? WEBAPP_BASE_URL : window.location.href.split('?')[0];
+          const url = new URL(base);
+          url.searchParams.set('articleId', articleId);
+          return url.toString();
+        } catch (e) {
+          return window.location.href;
+        }
+      }
+
+      // クリップボードコピー
+      function copyToClipboard(text) {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          return navigator.clipboard.writeText(text);
+        }
+        return new Promise((resolve, reject) => {
+          try {
+            const textarea = document.createElement('textarea');
+            textarea.value = text;
+            textarea.style.position = 'fixed';
+            textarea.style.opacity = '0';
+            document.body.appendChild(textarea);
+            textarea.focus();
+            textarea.select();
+            const ok = document.execCommand('copy');
+            document.body.removeChild(textarea);
+            ok ? resolve() : reject();
+          } catch (err) {
+            reject(err);
+          }
+        });
+      }
+
+      // mermaidレンダリング（ブロックごとに正規化して render）
+      async function renderMermaid(container) {
+        try {
+          if (typeof mermaid === 'undefined') return;
+          if (!window.__MERMAID_INITED) {
+            mermaid.initialize({ startOnLoad: false, securityLevel: 'loose' });
+            window.__MERMAID_INITED = true;
+          }
+          const blocks = container.querySelectorAll('code.language-mermaid, pre code.language-mermaid');
+          for (const [idx, codeBlock] of Array.from(blocks).entries()) {
+            const parent = codeBlock.parentElement.tagName === 'PRE' ? codeBlock.parentElement : codeBlock;
+            const placeholder = document.createElement('div');
+            placeholder.className = 'mermaid';
+            const renderId = `mermaid-${Date.now()}-${idx}`;
+            parent.replaceWith(placeholder);
+
+            let graphDef = (codeBlock.textContent || '').replace(/\r\n/g, '\n');
+            const isPie = /\bpie\s+title\b/.test(graphDef);
+            if (isPie) {
+              // pie の場合はラベル行を安全に再構築（1行に並んでいても抽出可能）
+              const titleLine = (graphDef.match(/^\s*pie\s+title[^\n]*/) || [''])[0].trim();
+              const pairs = Array.from(graphDef.matchAll(/"([^"]+)"\s*:\s*([0-9]+(?:\.[0-9]+)?)/g)).map(
+                (m) => `"${m[1]}": ${m[2]}`
+              );
+              if (titleLine && pairs.length > 0) {
+                graphDef = [titleLine, ...pairs].join('\n');
+              } else {
+                graphDef = graphDef.replace(/\t+/g, '\n');
+              }
+            } else {
+              graphDef = graphDef.replace(/\t/g, '    ');
+            }
+            graphDef = graphDef.trim();
+            if (!graphDef) {
+              placeholder.remove();
+              continue;
+            }
+
+            const tryRender = async (src) => {
+              const { svg } = await mermaid.render(renderId, src);
+              placeholder.innerHTML = svg;
+            };
+            try {
+              await tryRender(graphDef);
+            } catch (e) {
+              console.error('Mermaid render failed', e);
+              placeholder.innerHTML = `<pre class="mermaid-error">Mermaid parse error:\n${graphDef}</pre>`;
+            }
+          }
+        } catch (e) {
+          console.error('Mermaid processing error', e);
+        }
+      }
+
+      // --- 初期表示 ---
+      document.addEventListener('DOMContentLoaded', () => {
+          const params = new URLSearchParams(window.location.search);
+          const qArticleId = params.get('articleId');
+          if (qArticleId) {
+            pendingArticleId = qArticleId;
+          }
+          showList();
+          loadInitialContent(); // 初回は統合コンテンツを読み込む
+      });
+
+      // インラインonclick向けに必要な関数を公開
+      window.showForm = showForm;
+      window.showSearch = showSearch;
+      window.showList = showList;
+      window.showEditor = showEditor;
+      window.showPreview = showPreview;
+      window.triggerFileInput = triggerFileInput;
+      window.cancelEdit = cancelEdit;
+      window.closeDetailModal = closeDetailModal;
+      window.closeSlackDetailModal = closeSlackDetailModal;
+
+    })();
+    </script>
+  </body>
+</html> 
